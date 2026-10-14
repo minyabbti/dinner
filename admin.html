@@ -66,7 +66,7 @@
         做法：以種子打亂所有組別順序 → 依打亂順序分配第一志願，座位放不下的組先跳過 →
         未分到的組依序遞補到另一間（勾選「只想要自己選的那間」的組不遞補，位子直接讓給別人） →
         最後用剩餘座位撿還塞得下、且願意去那間的組，把位子補滿 →
-        仍排不進的列候補。與填寫時間完全無關；記下種子即可重現同一結果。
+        仍排不進的列未中選。與填寫時間完全無關；記下種子即可重現同一結果。
       </p>
       <div id="preview"></div>
     </div>
@@ -164,7 +164,7 @@ function preview(res){
           <span>${c.restaurant}　${g.length} 組　${c.capacity - n ? `空 ${c.capacity - n} 位` : "剛好坐滿"}</span></div>`;
       }).join("")}
       <div class="stat"><b>${moved.length}</b><span>改分到另一間的組</span></div>
-      <div class="stat"><b>${wait.length}</b><span>候補組（${wait.reduce((s,x)=>s+x.size,0)} 人）
+      <div class="stat"><b>${wait.length}</b><span>未中選組（${wait.reduce((s,x)=>s+x.size,0)} 人）
         ${wait.filter(g=>g.only).length ? `，其中 ${wait.filter(g=>g.only).length} 組只想要原選餐廳` : ""}</span></div>
     </div>
     <p class="note" style="margin-top:12px">種子 <b>${res.seed}</b>　—　這只是預覽，按「確認並公布結果」才會寫入資料庫。</p>`;
@@ -193,11 +193,11 @@ async function load(){
   const tag = r => !r.assigned ? "" :
     r.status === "first" ? `<span class="tag t-first">如願</span>` :
     r.status === "moved" ? `<span class="tag t-moved">改分</span>` :
-                           `<span class="tag t-wait">候補</span>`;
+                           `<span class="tag t-wait">未中選</span>`;
 
   $("rows").innerHTML = rows.map((r, i) =>
     `<tr><td>${i+1}</td><td>${r.restaurant}</td>
-     <td>${r.assigned || (r.status === "wait" ? "候補" : "—")} ${tag(r)}</td>
+     <td>${r.assigned || (r.status === "wait" ? "未中選" : "—")} ${tag(r)}</td>
      <td>${r.only_first ? "只要原選" : "都可以"}</td>
      <td>${r.leader_name}</td><td>${r.group_size}</td>
      <td>${all(r).join("、")}</td><td>${fmt(r.created_at)}</td>
@@ -249,7 +249,7 @@ $("reset").onclick = async () => {
 
 $("csv").onclick = () => {
   const esc = v => `"${String(v ?? "").replace(/"/g, '""')}"`;
-  const label = { first:"如願", moved:"改分", wait:"候補" };
+  const label = { first:"如願", moved:"改分", wait:"未中選" };
   const body = rows.map(r => [r.restaurant, r.assigned || "", label[r.status] || "",
                               r.only_first ? "只要原選" : "都可以",
                               r.leader_name, r.group_size, all(r).join("、"),
@@ -269,7 +269,7 @@ $("names").onclick = () => {
   });
   let text = Object.entries(byRest)
     .map(([k, v]) => `【${k}】共 ${v.length} 人\n${v.join("、")}`).join("\n\n");
-  if (wait.length) text += `\n\n【候補】共 ${wait.length} 人\n${wait.join("、")}`;
+  if (wait.length) text += `\n\n【未中選】共 ${wait.length} 人\n${wait.join("、")}`;
   if (!drawn) text = "（尚未抽籤，以下為登記志願）\n\n" + text;
   navigator.clipboard.writeText(text).then(() => alert("名單已複製，可直接貼到公告。"));
 };
