@@ -64,7 +64,8 @@
       </div>
       <p class="note" style="margin:12px 0 0">
         做法：以種子打亂所有組別順序 → 依打亂順序分配第一志願，座位放不下的組先跳過 →
-        未分到的組依序遞補到另一間 → 最後用剩餘座位撿還塞得下的小組，把位子補滿 →
+        未分到的組依序遞補到另一間（勾選「只想要自己選的那間」的組不遞補，位子直接讓給別人） →
+        最後用剩餘座位撿還塞得下、且願意去那間的組，把位子補滿 →
         仍排不進的列候補。與填寫時間完全無關；記下種子即可重現同一結果。
       </p>
       <div id="preview"></div>
@@ -77,7 +78,7 @@
         <button class="ghost" id="names">複製公布名單</button>
       </div>
       <div class="scroll"><table>
-        <thead><tr><th>#</th><th>登記餐廳</th><th>抽籤結果</th><th>填表人</th><th>人數</th>
+        <thead><tr><th>#</th><th>登記餐廳</th><th>抽籤結果</th><th>意願</th><th>填表人</th><th>人數</th>
                    <th>同組全員</th><th>填寫時間</th><th></th></tr></thead>
         <tbody id="rows"></tbody>
       </table></div>
@@ -111,7 +112,8 @@ function rng(seed){ // mulberry32，給定種子結果可重現
 function runDraw(seed){
   const rand = rng(seed);
   const pool = rows.map(r => ({ id:r.id, size:r.group_size, pref:r.restaurant,
-                                leader:r.leader_name, names:all(r), assigned:null }));
+                                only:!!r.only_first, leader:r.leader_name,
+                                names:all(r), assigned:null }));
   // Fisher–Yates，順序與填寫時間無關
   for (let i = pool.length - 1; i > 0; i--){
     const j = Math.floor(rand() * (i + 1)); [pool[i], pool[j]] = [pool[j], pool[i]];
@@ -123,21 +125,22 @@ function runDraw(seed){
   for (const g of pool)
     if (g.size <= left[g.pref]){ g.assigned = g.pref; left[g.pref] -= g.size; }
 
-  // 2) 落選組遞補到另一間
+  // 2) 落選組遞補到另一間（勾「只想要自己選的那間」的組不遞補，位子留給別人）
   const others = r => caps.map(c => c.restaurant).filter(x => x !== r);
   for (const g of pool){
-    if (g.assigned) continue;
+    if (g.assigned || g.only) continue;
     for (const o of others(g.pref))
       if (g.size <= left[o]){ g.assigned = o; left[o] -= g.size; break; }
   }
 
-  // 3) 補滿零頭：剩餘座位由小到大撿還塞得下的組
+  // 3) 補滿零頭：剩餘座位由大到小撿還塞得下、且願意去那間的組
+  const ok = (g, rest) => g.pref === rest || !g.only;
   let moved = true;
   while (moved){
     moved = false;
     for (const rest of caps.map(c => c.restaurant)){
       if (left[rest] <= 0) continue;
-      const fit = pool.filter(g => !g.assigned && g.size <= left[rest])
+      const fit = pool.filter(g => !g.assigned && g.size <= left[rest] && ok(g, rest))
                       .sort((a, b) => b.size - a.size)[0];
       if (fit){ fit.assigned = rest; left[rest] -= fit.size; moved = true; }
     }
@@ -161,7 +164,8 @@ function preview(res){
           <span>${c.restaurant}　${g.length} 組　${c.capacity - n ? `空 ${c.capacity - n} 位` : "剛好坐滿"}</span></div>`;
       }).join("")}
       <div class="stat"><b>${moved.length}</b><span>改分到另一間的組</span></div>
-      <div class="stat"><b>${wait.length}</b><span>候補組（${wait.reduce((s,x)=>s+x.size,0)} 人）</span></div>
+      <div class="stat"><b>${wait.length}</b><span>候補組（${wait.reduce((s,x)=>s+x.size,0)} 人）
+        ${wait.filter(g=>g.only).length ? `，其中 ${wait.filter(g=>g.only).length} 組只想要原選餐廳` : ""}</span></div>
     </div>
     <p class="note" style="margin-top:12px">種子 <b>${res.seed}</b>　—　這只是預覽，按「確認並公布結果」才會寫入資料庫。</p>`;
 }
@@ -194,10 +198,11 @@ async function load(){
   $("rows").innerHTML = rows.map((r, i) =>
     `<tr><td>${i+1}</td><td>${r.restaurant}</td>
      <td>${r.assigned || (r.status === "wait" ? "候補" : "—")} ${tag(r)}</td>
+     <td>${r.only_first ? "只要原選" : "都可以"}</td>
      <td>${r.leader_name}</td><td>${r.group_size}</td>
      <td>${all(r).join("、")}</td><td>${fmt(r.created_at)}</td>
      <td><button class="del" data-id="${r.id}">刪除</button></td></tr>`
-  ).join("") || `<tr><td colspan="8" class="note">目前沒有報名資料</td></tr>`;
+  ).join("") || `<tr><td colspan="9" class="note">目前沒有報名資料</td></tr>`;
 
   $("rows").querySelectorAll(".del").forEach(b => b.onclick = async () => {
     if (!confirm("確定刪除這筆報名？")) return;
@@ -246,9 +251,10 @@ $("csv").onclick = () => {
   const esc = v => `"${String(v ?? "").replace(/"/g, '""')}"`;
   const label = { first:"如願", moved:"改分", wait:"候補" };
   const body = rows.map(r => [r.restaurant, r.assigned || "", label[r.status] || "",
+                              r.only_first ? "只要原選" : "都可以",
                               r.leader_name, r.group_size, all(r).join("、"),
                               fmt(r.created_at)].map(esc).join(","));
-  const csv = "\uFEFF" + ["登記餐廳,抽籤結果,狀態,填表人,人數,同組全員,填寫時間", ...body].join("\n");
+  const csv = "\uFEFF" + ["登記餐廳,抽籤結果,狀態,意願,填表人,人數,同組全員,填寫時間", ...body].join("\n");
   const a = document.createElement("a");
   a.href = URL.createObjectURL(new Blob([csv], { type:"text/csv" }));
   a.download = "年終餐會名單.csv"; a.click();
