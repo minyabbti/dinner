@@ -76,6 +76,16 @@
       <div id="rests">載入名額中…</div>
     </div>
 
+    <div class="field">
+      <label>抽籤結果意願 <span class="hint">（此選項不影響抽籤順序，僅供統計）</span></label>
+      <label class="rest" id="w0"><input type="radio" name="will" value="0" checked>
+        <span><b>不管是哪一間都會參加</b>
+        <span class="seat">抽到另一間也照常出席</span></span></label>
+      <label class="rest" id="w1"><input type="radio" name="will" value="1">
+        <span><b>只想要自己選的那一間</b>
+        <span class="seat">若抽到另一間，就不參加年終餐會</span></span></label>
+    </div>
+
     <button type="submit" id="submit">送出報名</button>
   </form>
 
@@ -173,8 +183,10 @@ $("form").addEventListener("submit", async e => {
   if (!picked) return showErr("請選擇餐廳。");
 
   $("submit").disabled = true; $("submit").textContent = "送出中…";
+  const onlyFirst = document.querySelector('input[name="will"]:checked').value === "1";
   const { data, error } = await db.rpc("dinner_submit", {
-    p_leader: leader, p_size: size, p_members: members, p_restaurant: picked
+    p_leader: leader, p_size: size, p_members: members,
+    p_restaurant: picked, p_only_first: onlyFirst
   });
   $("submit").disabled = false; $("submit").textContent = "送出報名";
 
@@ -186,6 +198,14 @@ $("form").addEventListener("submit", async e => {
   $("doneText").textContent =
     `${picked}，共 ${size} 位：${all.join("、")}。若該餐廳超額，將以整組為單位抽籤，結果另行公布。`;
 });
+
+// 意願選項的選取樣式
+function syncWill(){
+  ["w0", "w1"].forEach(id =>
+    $(id).classList.toggle("sel", $(id).querySelector("input").checked));
+}
+document.querySelectorAll('input[name="will"]').forEach(i => i.addEventListener("change", syncWill));
+syncWill();
 
 renderMembers();
 loadSeats();
